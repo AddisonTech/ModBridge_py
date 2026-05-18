@@ -28,7 +28,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_poll = sub.add_parser("poll", help="Live terminal table of register values")
     p_poll.add_argument("--host", required=True, metavar="IP", help="Modbus device host")
     p_poll.add_argument("--port", type=int, default=502, metavar="PORT", help="Modbus TCP port (default: 502)")
-    p_poll.add_argument("--registers", required=True, metavar="RANGE", help="Register range, e.g. 40001-40010")
+    p_poll.add_argument(
+        "--registers", required=True, metavar="RANGE",
+        help="Register range: 40001-40010 (holding, FC3) or 30001-30010 (input, FC4)"
+    )
     _add_common(p_poll)
 
     # --- serve ---
@@ -38,7 +41,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--modbus-port", type=int, default=502, dest="modbus_port",
         metavar="PORT", help="Modbus TCP port (default: 502)"
     )
-    p_serve.add_argument("--registers", required=True, metavar="RANGE", help="Register range, e.g. 40001-40100")
+    p_serve.add_argument(
+        "--registers", required=True, metavar="RANGE",
+        help="Register range: 40001-40100 (holding, FC3) or 30001-30100 (input, FC4)"
+    )
     p_serve.add_argument("--port", type=int, default=3000, metavar="PORT", help="REST API port (default: 3000)")
     _add_common(p_serve)
 
@@ -46,27 +52,33 @@ def build_parser() -> argparse.ArgumentParser:
     p_log = sub.add_parser("log", help="Log register values to a CSV file")
     p_log.add_argument("--host", required=True, metavar="IP", help="Modbus device host")
     p_log.add_argument("--port", type=int, default=502, metavar="PORT", help="Modbus TCP port (default: 502)")
-    p_log.add_argument("--registers", required=True, metavar="RANGE", help="Register range, e.g. 40001-40010")
+    p_log.add_argument(
+        "--registers", required=True, metavar="RANGE",
+        help="Register range: 40001-40010 (holding, FC3) or 30001-30010 (input, FC4)"
+    )
     p_log.add_argument("--output", required=True, metavar="FILE", help="Output CSV file path")
     _add_common(p_log)
 
     # --- simulate ---
-    p_sim = sub.add_parser("simulate", help="Run a fake Modbus TCP server with random-walking register values")
+    p_sim = sub.add_parser("simulate", help="Run a fake Modbus TCP server")
     p_sim.add_argument("--host", default="localhost", metavar="ADDR", help="Bind address (default: localhost)")
     p_sim.add_argument("--port", type=int, default=502, metavar="PORT", help="Bind port (default: 502)")
+    p_sim.add_argument(
+        "--config", metavar="FILE", default=None,
+        help="TOML config file for per-register behaviors (walk/static/counter/sine)"
+    )
     _add_common(p_sim)
 
     return parser
 
 
 async def cmd_poll(args: argparse.Namespace) -> None:
-    from modbridge.client import ModbusPoller, parse_register_range
+    from modbridge.client import parse_register_range
     from modbridge.display import live_display
 
     start, end = parse_register_range(args.registers)
     count = end - start + 1
-    async with ModbusPoller(args.host, port=args.port, unit_id=args.unit_id) as poller:
-        await live_display(poller, start, count, args.interval)
+    await live_display(args.host, args.port, args.unit_id, start, count, args.interval)
 
 
 async def cmd_serve(args: argparse.Namespace) -> None:
@@ -90,18 +102,17 @@ async def cmd_serve(args: argparse.Namespace) -> None:
 
 
 async def cmd_log(args: argparse.Namespace) -> None:
-    from modbridge.client import ModbusPoller, parse_register_range
+    from modbridge.client import parse_register_range
     from modbridge.logger import log_to_csv
 
     start, end = parse_register_range(args.registers)
     count = end - start + 1
-    async with ModbusPoller(args.host, port=args.port, unit_id=args.unit_id) as poller:
-        await log_to_csv(poller, start, count, args.interval, args.output)
+    await log_to_csv(args.host, args.port, args.unit_id, start, count, args.interval, args.output)
 
 
 async def cmd_simulate(args: argparse.Namespace) -> None:
     from modbridge.simulator import run_simulator
-    await run_simulator(host=args.host, port=args.port, interval=args.interval)
+    await run_simulator(host=args.host, port=args.port, interval=args.interval, config_path=args.config)
 
 
 async def _main() -> None:

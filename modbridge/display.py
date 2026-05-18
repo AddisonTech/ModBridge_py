@@ -1,6 +1,5 @@
 from __future__ import annotations
 import asyncio
-import sys
 from datetime import datetime
 from typing import Dict
 
@@ -32,14 +31,27 @@ def _build_table(values: Dict[int, int], timestamp: str) -> Table:
     return table
 
 
-async def live_display(poller: ModbusPoller, start_register: int, count: int, interval: float) -> None:
+async def live_display(
+    host: str,
+    port: int,
+    unit_id: int,
+    start_register: int,
+    count: int,
+    interval: float,
+) -> None:
     with Live(console=console, refresh_per_second=4, screen=False) as live:
         while True:
             try:
-                values = await poller.poll(start_register, count)
-                ts = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
-                live.update(_build_table(values, ts))
+                async with ModbusPoller(host, port=port, unit_id=unit_id) as poller:
+                    while True:
+                        try:
+                            values = await poller.poll(start_register, count)
+                            ts = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
+                            live.update(_build_table(values, ts))
+                        except Exception as exc:
+                            console.print(f"[yellow]poll error[/yellow]: {exc} -- reconnecting")
+                            break
+                        await asyncio.sleep(interval)
             except Exception as exc:
-                console.print(f"[red]Poll error:[/red] {exc}")
-                print(file=sys.stderr)
-            await asyncio.sleep(interval)
+                console.print(f"[yellow]connection failed[/yellow]: {exc} -- retrying in 2s")
+                await asyncio.sleep(2)
